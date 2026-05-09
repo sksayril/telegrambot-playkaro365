@@ -592,11 +592,12 @@ async function discoverCsrfToken(page, context) {
 loadLocalEnv();
 
 /**
- * Headless default: Ubuntu/SSH servers have no X11 → headed Chromium/Firefox exits immediately.
- * - PLAYKARO_HEADLESS=1|true|yes → headless
- * - PLAYKARO_HEADLESS=0|false|no → headed (use with xvfb-run on Linux if no real DISPLAY)
- * - Unset on Linux with no DISPLAY → headless (auto)
- * - PLAYKARO_HEADED=1 → headed (same as HEADLESS=0; handy when DISPLAY is set by xvfb)
+ * Default is headed — AWS WAF / Human Verification usually fails in headless.
+ * - PLAYKARO_HEADLESS=1|true|yes → headless (only if you accept WAF risk / testing)
+ * - PLAYKARO_HEADLESS=0|false|no → headed
+ * - PLAYKARO_HEADED=1 → headed (explicit)
+ * - Linux server without DISPLAY: still headed; run the bot under xvfb-run (see log below).
+ * - PLAYKARO_AUTO_HEADLESS_LINUX=1 → on Linux with no DISPLAY only, use headless (old server default).
  */
 function resolvePlaywrightHeadless() {
   const h = String(process.env.PLAYKARO_HEADLESS || "").trim();
@@ -605,10 +606,14 @@ function resolvePlaywrightHeadless() {
   if (/^(1|true|yes)$/i.test(String(process.env.PLAYKARO_HEADED || "").trim())) {
     return { headless: false, via: "PLAYKARO_HEADED" };
   }
-  if (process.platform === "linux" && !String(process.env.DISPLAY || "").trim()) {
-    return { headless: true, via: "auto (linux, no DISPLAY)" };
+  if (
+    /^(1|true|yes)$/i.test(String(process.env.PLAYKARO_AUTO_HEADLESS_LINUX || "").trim()) &&
+    process.platform === "linux" &&
+    !String(process.env.DISPLAY || "").trim()
+  ) {
+    return { headless: true, via: "PLAYKARO_AUTO_HEADLESS_LINUX (linux, no DISPLAY)" };
   }
-  return { headless: false, via: "default headed" };
+  return { headless: false, via: "default headed (WAF)" };
 }
 
 const loginEmail = (process.env.PLAYKARO_EMAIL || "").trim();
@@ -692,6 +697,18 @@ if (useFirefoxPersistent) {
 }
 
 console.log(`[browser] headless=${headless} (${headlessVia})`);
+if (
+  !headless &&
+  process.platform === "linux" &&
+  !String(process.env.DISPLAY || "").trim()
+) {
+  console.log(
+    "[browser] No DISPLAY — headed Chrome needs a virtual framebuffer. Example:\n" +
+      "  xvfb-run -a npm run bot:telegram\n" +
+      "Or: Xvfb :99 -screen 0 1920x1080x24 &  export DISPLAY=:99\n" +
+      "Headless-only servers: PLAYKARO_HEADLESS=1 (WAF may block) or PLAYKARO_AUTO_HEADLESS_LINUX=1."
+  );
+}
 
 const browser = useFirefoxPersistent
   ? await firefox.launchPersistentContext(firefoxProfileDir, {
