@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -596,8 +597,9 @@ loadLocalEnv();
  * - PLAYKARO_HEADLESS=1|true|yes → headless (only if you accept WAF risk / testing)
  * - PLAYKARO_HEADLESS=0|false|no → headed
  * - PLAYKARO_HEADED=1 → headed (explicit)
- * - Linux server without DISPLAY: still headed; run the bot under xvfb-run (see log below).
- * - PLAYKARO_AUTO_HEADLESS_LINUX=1 → on Linux with no DISPLAY only, use headless (old server default).
+ * - Linux + no DISPLAY: this script re-execs once under `xvfb-run -a` if installed (headed + WAF).
+ * - PLAYKARO_SKIP_AUTO_XVFB=1 → skip that re-exec (you manage DISPLAY yourself).
+ * - PLAYKARO_AUTO_HEADLESS_LINUX=1 → on Linux with no DISPLAY only, use headless (WAF may block).
  */
 function resolvePlaywrightHeadless() {
   const h = String(process.env.PLAYKARO_HEADLESS || "").trim();
@@ -616,9 +618,41 @@ function resolvePlaywrightHeadless() {
   return { headless: false, via: "default headed (WAF)" };
 }
 
+/**
+ * Headed Playwright on Linux needs a framebuffer. If DISPLAY is unset and `xvfb-run` exists,
+ * re-run this process under `xvfb-run -a` once (child gets DISPLAY; avoids manual wrapping).
+ */
+function maybeReexecUnderXvfbRun(headless) {
+  if (headless) return;
+  if (process.platform !== "linux") return;
+  if (String(process.env.DISPLAY || "").trim()) return;
+  if (/^(1|true|yes)$/i.test(String(process.env.PLAYKARO_SKIP_AUTO_XVFB || "").trim())) return;
+
+  if (process.env.PLAYKARO_XVFB_REEXEC === "1") {
+    console.error(
+      "[browser] Headed on Linux but DISPLAY is still unset. Install xvfb: sudo apt install -y xvfb"
+    );
+    return;
+  }
+
+  const which = spawnSync("which", ["xvfb-run"], { encoding: "utf8" });
+  const xvfbRun = which.status === 0 ? String(which.stdout || "").trim().split(/\n/)[0]?.trim() : "";
+  if (!xvfbRun) return;
+
+  process.env.PLAYKARO_XVFB_REEXEC = "1";
+  console.log("[browser] No DISPLAY — re-running under xvfb-run -a (virtual screen for headed Chromium).");
+  const r = spawnSync(xvfbRun, ["-a", process.execPath, ...process.argv.slice(1)], {
+    stdio: "inherit",
+    env: process.env,
+    cwd: process.cwd(),
+  });
+  process.exit(r.status === null ? 1 : r.status);
+}
+
 const loginEmail = (process.env.PLAYKARO_EMAIL || "").trim();
 const loginPassword = (process.env.PLAYKARO_PASSWORD || "").trim();
 const { headless, via: headlessVia } = resolvePlaywrightHeadless();
+maybeReexecUnderXvfbRun(headless);
 const settleMs = Number(process.env.PLAYKARO_SETTLE_MS || 3000) || 3000;
 const verbose = /^(1|true|yes)$/i.test(String(process.env.PLAYKARO_VERBOSE || "").trim());
 const promotionId = (process.env.PLAYKARO_PROMOTION_ID || "22").trim() || "22";
@@ -703,10 +737,10 @@ if (
   !String(process.env.DISPLAY || "").trim()
 ) {
   console.log(
-    "[browser] No DISPLAY — headed Chrome needs a virtual framebuffer. Example:\n" +
-      "  xvfb-run -a npm run bot:telegram\n" +
-      "Or: Xvfb :99 -screen 0 1920x1080x24 &  export DISPLAY=:99\n" +
-      "Headless-only servers: PLAYKARO_HEADLESS=1 (WAF may block) or PLAYKARO_AUTO_HEADLESS_LINUX=1."
+    "[browser] No DISPLAY and xvfb-run not on PATH — headed Chrome cannot start. Fix:\n" +
+      "  sudo apt install -y xvfb\n" +
+      "Or wrap the bot: xvfb-run -a npm run bot:telegram\n" +
+      "Headless (WAF may block): PLAYKARO_HEADLESS=1 or PLAYKARO_AUTO_HEADLESS_LINUX=1."
   );
 }
 
