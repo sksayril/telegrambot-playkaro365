@@ -1,0 +1,15 @@
+{
+  "name": "telegrambot-playkaro365",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "login:playkaro": "node scripts/playkaro-login.mjs",
+    "session:playkaro": "node scripts/playkaro-session.mjs",
+    "fullflow:playkaro": "node scripts/playkaro-full-flow.mjs",
+    "bot:telegram": "node scripts/telegram-bot.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0",
+    "sql.js": "^1.14.1"
+  }
+}
