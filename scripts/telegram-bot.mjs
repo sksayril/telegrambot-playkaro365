@@ -251,7 +251,7 @@ function runPlaykaroFlow({ site, identifier, password, amount, promotionId, prox
       PLAY_SITE_URL: normalizedSite,
       ...(proxy ? { PLAY_PROXY_URL: proxy } : {}),
       ...(joinUrl ? { PLAY_JOIN_URL: joinUrl } : {}),
-      PLAYKARO_HEADLESS: process.env.PLAYKARO_HEADLESS || "false",
+      /** Omit default: playkaro-full-flow auto headless on Linux when DISPLAY is unset (servers). */
       PLAYKARO_VERBOSE: "false",
     };
     const siteOrigin = (() => {

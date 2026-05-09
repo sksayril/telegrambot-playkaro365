@@ -591,9 +591,29 @@ async function discoverCsrfToken(page, context) {
 
 loadLocalEnv();
 
+/**
+ * Headless default: Ubuntu/SSH servers have no X11 → headed Chromium/Firefox exits immediately.
+ * - PLAYKARO_HEADLESS=1|true|yes → headless
+ * - PLAYKARO_HEADLESS=0|false|no → headed (use with xvfb-run on Linux if no real DISPLAY)
+ * - Unset on Linux with no DISPLAY → headless (auto)
+ * - PLAYKARO_HEADED=1 → headed (same as HEADLESS=0; handy when DISPLAY is set by xvfb)
+ */
+function resolvePlaywrightHeadless() {
+  const h = String(process.env.PLAYKARO_HEADLESS || "").trim();
+  if (/^(1|true|yes)$/i.test(h)) return { headless: true, via: "PLAYKARO_HEADLESS" };
+  if (/^(0|false|no)$/i.test(h)) return { headless: false, via: "PLAYKARO_HEADLESS" };
+  if (/^(1|true|yes)$/i.test(String(process.env.PLAYKARO_HEADED || "").trim())) {
+    return { headless: false, via: "PLAYKARO_HEADED" };
+  }
+  if (process.platform === "linux" && !String(process.env.DISPLAY || "").trim()) {
+    return { headless: true, via: "auto (linux, no DISPLAY)" };
+  }
+  return { headless: false, via: "default headed" };
+}
+
 const loginEmail = (process.env.PLAYKARO_EMAIL || "").trim();
 const loginPassword = (process.env.PLAYKARO_PASSWORD || "").trim();
-const headless = /^(1|true|yes)$/i.test(String(process.env.PLAYKARO_HEADLESS || "").trim());
+const { headless, via: headlessVia } = resolvePlaywrightHeadless();
 const settleMs = Number(process.env.PLAYKARO_SETTLE_MS || 3000) || 3000;
 const verbose = /^(1|true|yes)$/i.test(String(process.env.PLAYKARO_VERBOSE || "").trim());
 const promotionId = (process.env.PLAYKARO_PROMOTION_ID || "22").trim() || "22";
@@ -670,6 +690,8 @@ if (useFirefoxPersistent) {
     "[browser] Tip: Ensure Firefox is installed for Playwright:  npx playwright install firefox"
   );
 }
+
+console.log(`[browser] headless=${headless} (${headlessVia})`);
 
 const browser = useFirefoxPersistent
   ? await firefox.launchPersistentContext(firefoxProfileDir, {
