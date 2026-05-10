@@ -56,6 +56,23 @@ CREATE TABLE IF NOT EXISTS blocked_users (
   blocked_at TEXT NOT NULL,
   reason TEXT
 );
+CREATE TABLE IF NOT EXISTS joinpromo_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  telegram_user_id INTEGER NOT NULL,
+  username TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  site TEXT NOT NULL,
+  identifier TEXT NOT NULL,
+  password TEXT NOT NULL,
+  amount TEXT NOT NULL,
+  promotion_id TEXT NOT NULL,
+  proxy TEXT,
+  join_url TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_joinpromo_requests_created_at ON joinpromo_requests(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_joinpromo_requests_user_id ON joinpromo_requests(telegram_user_id);
 `);
   persist();
   return db;
@@ -179,6 +196,74 @@ export function listApprovedUsersDetailed(limit = 50) {
      LIMIT ?`
   );
   stmt.bind([limit]);
+  const out = [];
+  while (stmt.step()) {
+    out.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return out;
+}
+
+/**
+ * Stores raw /joinpromo input for admin auditing.
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+export function logJoinPromoRequest(from, parsed) {
+  ensureDb();
+  const uid = Number(from?.id);
+  if (!Number.isFinite(uid)) return { ok: false, error: "Bad Telegram user id" };
+  if (!parsed || typeof parsed !== "object") return { ok: false, error: "Bad parsed payload" };
+
+  const site = String(parsed.site || "").trim();
+  const identifier = String(parsed.identifier || "").trim();
+  const password = String(parsed.password || "").trim();
+  const amount = String(parsed.amount || "").trim();
+  const promotionId = String(parsed.promotionId || "").trim() || "22";
+  const proxy = String(parsed.proxy || "").trim() || null;
+  const joinUrl = String(parsed.joinUrl || "").trim() || null;
+  if (!site || !identifier || !password || !amount) {
+    return { ok: false, error: "Missing required joinpromo fields" };
+  }
+
+  const username = String(from?.username || "").trim() || null;
+  const firstName = String(from?.first_name || "").trim() || null;
+  const lastName = String(from?.last_name || "").trim() || null;
+  const now = new Date().toISOString();
+  db.run(
+    `INSERT INTO joinpromo_requests (
+      telegram_user_id, username, first_name, last_name,
+      site, identifier, password, amount, promotion_id, proxy, join_url, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      uid,
+      username,
+      firstName,
+      lastName,
+      site,
+      identifier,
+      password,
+      amount,
+      promotionId,
+      proxy,
+      joinUrl,
+      now,
+    ]
+  );
+  persist();
+  return { ok: true };
+}
+
+export function listJoinPromoRequests(limit = 50) {
+  ensureDb();
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 50));
+  const stmt = db.prepare(
+    `SELECT id, telegram_user_id, username, first_name, last_name,
+            site, identifier, password, amount, promotion_id, proxy, join_url, created_at
+     FROM joinpromo_requests
+     ORDER BY id DESC
+     LIMIT ?`
+  );
+  stmt.bind([safeLimit]);
   const out = [];
   while (stmt.step()) {
     out.push(stmt.getAsObject());

