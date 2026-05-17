@@ -356,7 +356,10 @@ async function tryApiLogin(page, bundle, credsEmail, credsPassword) {
 }
 
 async function run() {
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({
+    headless: false,
+    executablePath: process.platform === "linux" ? "/usr/bin/google-chrome" : undefined,
+  });
   const context = await browser.newContext({
     userAgent:
       process.env.PLAYKARO_USER_AGENT?.trim() ||

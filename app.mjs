@@ -90,6 +90,7 @@ async function main() {
 
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: HEADLESS,
+    executablePath: process.platform === "linux" ? "/usr/bin/google-chrome" : undefined,
     args: launchArgs,
     ignoreDefaultArgs: ["--enable-automation"],
     viewport: { width: 1280, height: 720 },

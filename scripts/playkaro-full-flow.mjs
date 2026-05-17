@@ -764,6 +764,7 @@ const browser = useFirefoxPersistent
     })
   : await chromium.launchPersistentContext(chromiumProfileDir, {
       headless,
+      executablePath: process.platform === "linux" ? "/usr/bin/google-chrome" : undefined,
       viewport: { width: 1366, height: 900 },
       ...(proxyConfig ? { proxy: proxyConfig } : {}),
       args: [
