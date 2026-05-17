@@ -58,6 +58,9 @@ async function extractSessionBundle(page, context) {
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
 
+  const siteUrl = new URL(page.url());
+  const siteOrigin = siteUrl.origin;
+
   const pageProbe = await page.evaluate(() => {
     const metas = [...document.querySelectorAll("meta")].map((m) => ({
       name: m.getAttribute("name"),
@@ -108,8 +111,8 @@ async function extractSessionBundle(page, context) {
   const suggestedApiHeaders = {
     Accept: "*/*",
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    Origin: "https://playkaro365.com",
-    Referer: "https://playkaro365.com/",
+    Origin: siteOrigin,
+    Referer: siteUrl.href,
     "User-Agent": userAgent,
     "X-Requested-With": "XMLHttpRequest",
     ...(csrfForHeader ? { "X-CSRF-Token": csrfForHeader } : {}),
@@ -126,7 +129,7 @@ async function extractSessionBundle(page, context) {
     xsrfDecoded,
     csrfForHeader,
     suggestedApiHeaders,
-    loginEndpoint: "https://playkaro365.com/api2/v2/login",
+    loginEndpoint: `${siteOrigin}/api2/v2/login`,
   };
 }
 
@@ -363,12 +366,31 @@ async function run() {
 
   console.log("headless:", headless, "| PLAYKARO_SKIP_LOGIN:", skipLogin);
 
-  await page.goto("https://playkaro365.com/", {
+  const siteUrl = process.env.PLAY_SITE_URL || "https://playkaro365.com/";
+  await page.goto(siteUrl, {
     waitUntil: "domcontentloaded",
     timeout: 60_000,
   });
   const settleMs = Number(process.env.PLAYKARO_SETTLE_MS || 5000) || 5000;
   await new Promise((r) => setTimeout(r, settleMs));
+
+  // Close any promo dialog (like on spinjeet.com)
+  try {
+    const dialogClose = page.locator("div.dialog.after-deposit-wrapper.dialog--active i.mdi-close, .modalClose i.mdi-close").first();
+    if (await dialogClose.count() > 0 && await dialogClose.isVisible()) {
+      await dialogClose.click({ timeout: 2000 });
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  } catch (e) {}
+
+  // Skip aviator slider (like on spinjeet.com)
+  try {
+    const skipBtn = page.locator(".skip_right_img, .skip-button").first();
+    if (await skipBtn.count() > 0 && await skipBtn.isVisible()) {
+      await skipBtn.click({ timeout: 2000 });
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  } catch (e) {}
 
   let bundle = await extractSessionBundle(page, context);
   logBundle("session after home load", bundle);

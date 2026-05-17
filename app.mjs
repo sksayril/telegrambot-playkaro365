@@ -97,12 +97,34 @@ async function main() {
 
   const page = context.pages()[0] ?? (await context.newPage());
 
+  const siteUrl = process.env.PLAY_SITE_URL || "https://playkaro365.com/";
+  const siteOrigin = new URL(siteUrl).origin;
+  const loginApiUrl = `${siteOrigin}/api2/v2/login`;
+
   try {
-    await page.goto("https://playkaro365.com/", { timeout: 90_000, waitUntil: "domcontentloaded" });
+    await page.goto(siteUrl, { timeout: 90_000, waitUntil: "domcontentloaded" });
   } catch {
     await page.evaluate(() => window.stop());
   }
   await sleep(3000);
+
+  // Close any promo dialog (like on spinjeet.com)
+  try {
+    const dialogClose = page.locator("div.dialog.after-deposit-wrapper.dialog--active i.mdi-close, .modalClose i.mdi-close").first();
+    if (await dialogClose.count() > 0 && await dialogClose.isVisible()) {
+      await dialogClose.click({ timeout: 2000 });
+      await sleep(1000);
+    }
+  } catch (e) {}
+
+  // Skip aviator slider (like on spinjeet.com)
+  try {
+    const skipBtn = page.locator(".skip_right_img, .skip-button").first();
+    if (await skipBtn.count() > 0 && await skipBtn.isVisible()) {
+      await skipBtn.click({ timeout: 2000 });
+      await sleep(1000);
+    }
+  } catch (e) {}
 
   console.log(await page.title());
   console.log(page.url());
@@ -217,12 +239,12 @@ async function main() {
     const csrfHeaderValue = decodeURIComponent(xCsrfToken);
 
     console.log("\n--- Login request details ---");
-    console.log("POST https://playkaro365.com/api2/v2/login");
+    console.log(`POST ${loginApiUrl}`);
     const headerObj = {
       Accept: "*/*",
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      Origin: "https://playkaro365.com",
-      Referer: "https://playkaro365.com/",
+      Origin: siteOrigin,
+      Referer: siteUrl,
       "User-Agent": userAgent,
       "X-CSRF-Token": csrfHeaderValue,
       "X-Requested-With": "XMLHttpRequest",
@@ -245,7 +267,7 @@ async function main() {
           "X-Requested-With": "XMLHttpRequest",
         };
         if (sid) headers["X-Socket-Id"] = String(sid);
-        const res = await fetch("https://playkaro365.com/api2/v2/login", {
+        const res = await fetch(loginApiUrl, {
           method: "POST",
           headers,
           body,
@@ -259,7 +281,7 @@ async function main() {
           text,
         };
       },
-      { email: loginEmail, password: loginPassword, csrf: csrfHeaderValue, socketId }
+      { email: loginEmail, password: loginPassword, csrf: csrfHeaderValue, socketId, loginApiUrl }
     );
 
     console.log("\n--- Login API response ---");

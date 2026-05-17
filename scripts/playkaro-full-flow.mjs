@@ -423,11 +423,22 @@ async function closeAfterDepositPopup(page, timeoutMs = 5000) {
     const stillVisible = await popup.isVisible().catch(() => false);
     if (!stillVisible) {
       console.log("Closed after-deposit / promo popup.");
-      return true;
     }
   } catch {
     /* no popup or already gone */
   }
+
+  try {
+    const skipBtn = page.locator(".skip_right_img, .skip-button").first();
+    if ((await skipBtn.count()) > 0 && (await skipBtn.isVisible())) {
+      await skipBtn.click({ timeout: 2000 });
+      console.log("Clicked aviator skip button.");
+      await page.waitForTimeout(1000);
+    }
+  } catch {
+    /* ignore */
+  }
+  
   return false;
 }
 
